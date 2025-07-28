@@ -1,4 +1,6 @@
-import { Page } from 'puppeteer';
+import { Page, ElementHandle } from 'puppeteer';
+import { truncateJobTitle } from './utils';
+import { prisma } from '@/lib/prisma';
 
 interface JobDetails {
   title: string;
@@ -13,7 +15,15 @@ interface JobResult {
   description: string;
 }
 
-async function getJobCardsOnCurrentPage(page: Page): Promise<any[]> {
+// NUEVO: Tipos para filtros opcionales
+export interface LinkedinExtraFilters {
+  location?: string; // Ej.: "La Paz, Bolivia"
+  modalities?: Array<'presencial' | 'hibrido' | 'remoto'>; // Modalidades opcionales
+}
+
+async function getJobCardsOnCurrentPage(
+  page: Page,
+): Promise<ElementHandle<Element>[]> {
   // Esperar a que carguen los resultados usando el selector correcto
   console.log('🔍 Buscando contenedor de ofertas...');
   try {
@@ -69,7 +79,7 @@ async function getJobCardsOnCurrentPage(page: Page): Promise<any[]> {
 
   // Obtener todas las tarjetas de ofertas usando el selector correcto
   console.log('🔍 Extrayendo tarjetas de ofertas...');
-  let jobCards = await page.$$(
+  let jobCards: ElementHandle<Element>[] = await page.$$(
     'ul.fIPvHriRZGzoNhZfdzYSlfTgbEvyrECFataA > li.ember-view',
   );
 
@@ -149,6 +159,9 @@ export async function handleLinkedin(
   email: string,
   password: string,
   keywords: string,
+  // NUEVOS PARÁMETROS OPCIONALES
+  location?: string,
+  modalities?: Array<'presencial' | 'hibrido' | 'remoto'>,
 ): Promise<{ appliedJobs: JobResult[]; reviewJobs: JobResult[] }> {
   try {
     await ensureLinkedInSession(page);
@@ -168,6 +181,14 @@ export async function handleLinkedin(
     });
     console.log('✅ Navegación inicial completada');
     await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // NUEVO: Asegurar que el filtro de ubicación y modalidad estén configurados
+    if (location) {
+      await ensureLocationFilter(page, location);
+    }
+    if (modalities && modalities.length > 0) {
+      await ensureWorkplaceFilter(page, modalities);
+    }
 
     const allAppliedJobs: JobResult[] = [];
     const allReviewJobs: JobResult[] = [];
@@ -189,13 +210,27 @@ export async function handleLinkedin(
       allAppliedJobs.push(...pageResults.appliedJobs);
       allReviewJobs.push(...pageResults.reviewJobs);
 
-      const nextButton = await page.$('button[aria-label="Siguiente"]');
+      console.log('🔍 Buscando el botón de "Siguiente"...');
+      const nextButtonHandle = await page.evaluateHandle(() => {
+        const spans = Array.from(
+          document.querySelectorAll('span.artdeco-button__text'),
+        );
+        const nextSpan = spans.find(
+          span => span.textContent?.trim() === 'Siguiente',
+        );
+        return nextSpan ? nextSpan.closest('button') : null;
+      });
+
+      const nextButton = nextButtonHandle.asElement();
+
       if (
         nextButton &&
-        !(await nextButton.evaluate(b => (b as HTMLButtonElement).disabled))
+        !(await (nextButton as ElementHandle<HTMLButtonElement>).evaluate(
+          b => b.disabled,
+        ))
       ) {
         console.log('✅ Pasando a la siguiente página...');
-        await nextButton.click();
+        await (nextButton as ElementHandle<HTMLButtonElement>).click();
         await new Promise(resolve => setTimeout(resolve, 5000));
         currentPage++;
       } else {
@@ -296,7 +331,7 @@ async function handleManualLogin(page: Page): Promise<void> {
 
 async function processJobApplications(
   page: Page,
-  jobCards: any[],
+  jobCards: ElementHandle<Element>[],
 ): Promise<{ appliedJobs: JobResult[]; reviewJobs: JobResult[] }> {
   console.log(`\n🚀 Iniciando procesamiento de ${jobCards.length} ofertas...`);
 
@@ -401,32 +436,77 @@ async function processJobApplications(
 }
 
 async function extractJobDetails(page: Page): Promise<JobDetails> {
-  return await page.evaluate(() => {
-    const title =
-      document
-        .querySelector('.job-details-jobs-unified-top-card__job-title')
-        ?.textContent?.trim() || 'N/A';
-    const company =
-      document
-        .querySelector('.job-details-jobs-unified-top-card__company-name')
-        ?.textContent?.trim() || 'N/A';
-    const location =
-      document
-        .querySelector('.job-details-jobs-unified-top-card__bullet')
-        ?.textContent?.trim() || 'N/A';
+  // Esperar a que el contenedor principal de detalles sea visible
+  const jobDetailsContainerSelector = '.job-details-jobs-unified-top-card';
+  try {
+    await page.waitForSelector(jobDetailsContainerSelector, { timeout: 5000 });
+  } catch (error) {
+    console.log(
+      `⚠️ No se encontró el contenedor de detalles principal: ${jobDetailsContainerSelector}`,
+    );
+    // Intentar con un selector de respaldo más general
+    await page.waitForSelector('.job-view-layout', { timeout: 5000 });
+  }
+
+  const result = await page.evaluate(() => {
+    // Selectores primarios y de respaldo para cada campo
+    const getElementText = (selectors: string[]): string => {
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) return element.textContent?.trim() || '';
+      }
+      return 'N/A';
+    };
+
+    const getInnerText = (selectors: string[]): string => {
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) return (element as HTMLElement).innerText?.trim() || '';
+      }
+      return 'N/A';
+    };
+
+    const title = getElementText([
+      '.job-details-jobs-unified-top-card__job-title', // Selector original
+      'h1.t-24.t-bold', // Selector más específico para el título
+      'h1', // Selector más genérico
+      '.job-title', // Otro selector común
+      'h2.job-title',
+    ]);
+
+    const company = getElementText([
+      '.job-details-jobs-unified-top-card__company-name', // Selector original
+      'a[href*="/company/"]', // Enlace de la compañía
+      '.job-company-name',
+      'div.job-details-jobs-unified-top-card__primary-description-without-company-cta > a',
+    ]);
+
+    const location = getElementText([
+      '.job-details-jobs-unified-top-card__bullet', // Selector original
+      'span.job-location', // Selector más específico para ubicación
+      'span[class*="location"]',
+    ]);
+
     const description =
-      document
-        .querySelector('#job-details')
-        ?.textContent?.trim()
-        .substring(0, 150) || 'N/A';
+      getInnerText([
+        'div.jobs-description-content__text', // Selector principal
+        '#job-details',
+        '.jobs-box__html-content',
+        'div.job-details-jobs-unified-top-card__job-insight',
+      ]) || 'Descripción no encontrada';
 
     return {
       title,
       company,
       location,
-      description: `${company} - ${location}. ${description}`,
+      description,
     };
   });
+
+  // Truncar el título si es muy largo
+  result.title = truncateJobTitle(result.title);
+
+  return result;
 }
 
 async function checkForEasyApply(page: Page): Promise<boolean> {
@@ -434,7 +514,7 @@ async function checkForEasyApply(page: Page): Promise<boolean> {
     'button.jobs-apply-button[aria-label*="Solicitud sencilla"]';
   console.log(`🔍 Verificando si tiene "${easyApplySelector}"...`);
   try {
-    await page.waitForSelector(easyApplySelector, { timeout: 10000 });
+    await page.waitForSelector(easyApplySelector, { timeout: 3500 });
     console.log('✅ Botón "Solicitud sencilla" encontrado');
     return true;
   } catch (error) {
@@ -497,6 +577,22 @@ async function processApplication(
   console.log('📝 Procesando formulario de postulación...');
   const success = await fillApplicationForm(page);
 
+  if (success) {
+    try {
+      await prisma.globalStats.upsert({
+        where: { id: 'main_stats' },
+        update: { totalApplications: { increment: 1 } },
+        create: { id: 'main_stats', totalApplications: 1 },
+      });
+      console.log('✅ Contador global de postulaciones incrementado.');
+    } catch (error) {
+      console.error(
+        '❌ Error al actualizar el contador global de postulaciones:',
+        error,
+      );
+    }
+  }
+
   const jobResult: JobResult = {
     link: page.url(),
     title: jobDetails.title,
@@ -526,8 +622,57 @@ async function fillApplicationForm(page: Page): Promise<boolean> {
     if (submitButton) {
       console.log('✅ Botón "Enviar solicitud" encontrado. Haciendo clic...');
       await submitButton.click();
-      await new Promise(resolve => setTimeout(resolve, 3000)); // Dar tiempo a que se procese
       console.log('🎉 ¡Postulación enviada exitosamente!');
+
+      console.log(
+        '⏳ Esperando 2s para que aparezca el popup de confirmación...',
+      );
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      try {
+        console.log(
+          '🔍 Buscando el botón para cerrar el popup de confirmación...',
+        );
+
+        const clicked = await page.evaluate(() => {
+          const use = document.querySelector('use[href="#close-medium"]');
+          if (use) {
+            const button = use.closest('button');
+            if (button) {
+              (button as HTMLElement).click();
+              return true;
+            }
+          }
+          return false;
+        });
+
+        if (clicked) {
+          console.log('✅ Popup de confirmación cerrado.');
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a bit
+        } else {
+          console.log(
+            '⚠️ No se encontró el botón de cierre del popup por el icono, probando por aria-label...',
+          );
+          const dismissButton = await page.$(
+            'button[aria-label="Descartar"], button[aria-label="Cerrar"]',
+          );
+          if (dismissButton) {
+            await dismissButton.click();
+            console.log('✅ Popup de confirmación cerrado (por aria-label).');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            console.log(
+              '⚠️ No se pudo cerrar el popup de confirmación. Continuando...',
+            );
+          }
+        }
+      } catch (error) {
+        console.error(
+          '❌ Error al intentar cerrar el popup de confirmación:',
+          error,
+        );
+      }
+
       return true;
     }
 
@@ -569,8 +714,10 @@ async function fillFormFields(page: Page): Promise<void> {
     try {
       const value = await input.evaluate(el => (el as HTMLInputElement).value);
       if (!value) {
-        await input.type('2', { delay: 50 });
+        await input.type('2', { delay: 100 });
         console.log('... input de texto rellenado con "2".');
+        // Pausa para asegurar que el valor se procesa antes de continuar
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     } catch (e) {
       // Silencioso para no llenar el log
@@ -584,14 +731,14 @@ async function fillFormFields(page: Page): Promise<void> {
       const selectedValue = await select.evaluate(
         el => (el as HTMLSelectElement).value,
       );
-      if (
-        !selectedValue ||
-        selectedValue.toLowerCase().includes('selecciona')
-      ) {
+      // Condición mejorada para detectar si el select necesita un valor.
+      // Cubre valores vacíos y placeholders como "Select an option" o "Selecciona".
+      if (!selectedValue || selectedValue.toLowerCase().includes('select')) {
         const options = await select.$$('option');
-        let selected = false;
+        if (options.length <= 1) continue; // No hay opciones para elegir
 
-        // Prioridad 1: Buscar y seleccionar "Yes"
+        let yesOptionFound = false;
+        // Prioridad 1: Buscar y seleccionar "Yes" si existe en las opciones.
         for (const option of options) {
           const optionText = await option.evaluate(el =>
             el.textContent?.trim().toLowerCase(),
@@ -601,25 +748,238 @@ async function fillFormFields(page: Page): Promise<void> {
               el => (el as HTMLOptionElement).value,
             );
             await select.select(optionValue);
-            console.log('... opción "Yes" seleccionada.');
-            selected = true;
+            console.log('... opción "Yes" seleccionada en el select.');
+            yesOptionFound = true;
             break;
           }
         }
 
-        if (selected) continue;
+        // Si se seleccionó "Yes", continuar con el siguiente select.
+        if (yesOptionFound) continue;
 
-        // Prioridad 2: Seleccionar la segunda opción (la primera suele ser placeholder)
-        if (options.length > 1) {
-          const valueToSelect = await options[1].evaluate(
-            el => (el as HTMLOptionElement).value,
-          );
-          await select.select(valueToSelect);
-          console.log(`... segunda opción '${valueToSelect}' seleccionada.`);
-        }
+        // Prioridad 2 (NUEVA LÓGICA): Seleccionar la última opción.
+        const lastOption = options[options.length - 1];
+        const valueToSelect = await lastOption.evaluate(
+          el => (el as HTMLOptionElement).value,
+        );
+        const textToSelect = await lastOption.evaluate(el =>
+          el.textContent?.trim(),
+        );
+
+        await select.select(valueToSelect);
+        console.log(
+          `... última opción ('${textToSelect}') seleccionada en el select.`,
+        );
+
+        // Pequeña pausa para que los cambios se registren
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     } catch (e) {
       // Silencioso
     }
+  }
+
+  // NUEVO: Rellenar radio buttons de "Sí/No"
+  console.log('📻 Buscando preguntas de Sí/No (radio buttons)...');
+  try {
+    const radioButtonsHandled = await page.evaluate(() => {
+      let handledCount = 0;
+      const fieldsets = document.querySelectorAll(
+        'fieldset[data-test-form-builder-radio-button-form-component]',
+      );
+
+      fieldsets.forEach(fieldset => {
+        const yesInput = fieldset.querySelector(
+          'input[type="radio"][value="Yes"]',
+        ) as HTMLInputElement;
+
+        if (yesInput && !yesInput.checked) {
+          // Busca la etiqueta correspondiente, que es más fiable para hacer clic
+          const yesLabel = fieldset.querySelector(
+            `label[for="${yesInput.id}"]`,
+          ) as HTMLLabelElement;
+
+          if (yesLabel) {
+            yesLabel.click();
+            handledCount++;
+          }
+        }
+      });
+      return handledCount;
+    });
+
+    if (radioButtonsHandled > 0) {
+      console.log(
+        `... ${radioButtonsHandled} preguntas de "Sí/No" respondidas.`,
+      );
+      // Pausa para asegurar que la acción se procesa
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch (e) {
+    console.error('❌ Error al procesar preguntas de radio button:', e);
+  }
+}
+
+// NUEVA FUNCIÓN: Configurar filtro de ubicación
+async function ensureLocationFilter(
+  page: Page,
+  userLocation: string,
+): Promise<void> {
+  console.log(`🌐 Verificando filtro de ubicación: "${userLocation}" ...`);
+  try {
+    const locationInputSelector = 'input[id^="jobs-search-box-location-id"]';
+    await page.waitForSelector(locationInputSelector, { timeout: 10000 });
+
+    const currentValue: string = await page.$eval(
+      locationInputSelector,
+      el => (el as HTMLInputElement).value || '',
+    );
+
+    if (
+      currentValue.trim().toLowerCase() === userLocation.trim().toLowerCase()
+    ) {
+      console.log(
+        '✅ El filtro de ubicación ya está configurado correctamente.',
+      );
+      return;
+    }
+
+    console.log('🔄 Actualizando filtro de ubicación...');
+    const inputHandle = await page.$(locationInputSelector);
+    if (!inputHandle) throw new Error('No se encontró el input de ubicación');
+
+    // Limpiar y escribir nueva ubicación
+    await inputHandle.click({ clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await inputHandle.type(userLocation, { delay: 100 });
+    await page.keyboard.press('Enter');
+
+    console.log(
+      '⏳ Esperando que los resultados se actualicen con la nueva ubicación...',
+    );
+    await new Promise(resolve => setTimeout(resolve, 4000));
+  } catch (error) {
+    console.error('❌ Error al configurar el filtro de ubicación:', error);
+  }
+}
+
+// NUEVA FUNCIÓN: Configurar filtro de modalidad de trabajo
+async function ensureWorkplaceFilter(
+  page: Page,
+  modalities: Array<'presencial' | 'hibrido' | 'remoto'>,
+): Promise<void> {
+  console.log(
+    `🏢 Verificando filtro de modalidad: ${modalities.join(', ')} ...`,
+  );
+  try {
+    const filterButtonSelector = 'button#searchFilter_workplaceType';
+    await page.waitForSelector(filterButtonSelector, { timeout: 10000 });
+
+    // Abrir el desplegable
+    console.log('🖱️ Abriendo desplegable de modalidad...');
+    await page.click(filterButtonSelector);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Pausa para animación
+
+    // Esperar a que aparezca el contenedor de opciones (usando un selector más específico)
+    const optionsContainerSelector =
+      'ul.search-reusables__collection-values-container';
+    try {
+      await page.waitForSelector(optionsContainerSelector, { timeout: 10000 });
+      console.log('✅ Contenedor de opciones de modalidad visible.');
+    } catch (e) {
+      console.error(
+        '❌ No se pudo encontrar el contenedor de opciones de modalidad.',
+      );
+      await page.screenshot({
+        path: 'linkedin-modalidad-dropdown-error.png',
+      });
+      console.log(
+        '📸 Screenshot de diagnóstico guardado como linkedin-modalidad-dropdown-error.png',
+      );
+      throw new Error(
+        'No se pudo abrir el desplegable de filtros de modalidad.',
+      );
+    }
+
+    // Mapear modalidades a los textos que aparecen en LinkedIn (en español)
+    const modalityMap: Record<string, string> = {
+      presencial: 'Presencial',
+      hibrido: 'Híbrido',
+      remoto: 'En remoto',
+    };
+
+    for (const mod of modalities) {
+      const optionText =
+        modalityMap[mod.toLowerCase() as keyof typeof modalityMap];
+      if (!optionText) continue;
+
+      // Evaluamos dentro de la página para marcar la opción si no está seleccionada
+      const toggled = await page.evaluate((text: string) => {
+        const listItems = Array.from(
+          document.querySelectorAll(
+            'li.search-reusables__collection-values-item',
+          ),
+        );
+        const targetItem = listItems.find(item =>
+          item.textContent?.trim().includes(text),
+        );
+
+        if (!targetItem) return false;
+
+        const checkbox = targetItem.querySelector(
+          'input[type="checkbox"]',
+        ) as HTMLInputElement | null;
+        const label = targetItem.querySelector(
+          'label.search-reusables__value-label',
+        );
+
+        if (checkbox && !checkbox.checked && label) {
+          (label as HTMLElement).click(); // Click the label to toggle
+          return true;
+        }
+        return false;
+      }, optionText);
+
+      if (toggled) {
+        console.log(`✅ Opción "${optionText}" activada.`);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Pequeña pausa
+      } else {
+        console.log(
+          `ℹ️ Opción "${optionText}" ya estaba activada o no se encontró.`,
+        );
+      }
+    }
+
+    // Buscar y hacer clic en el botón "Mostrar resultados"
+    console.log('🔍 Buscando botón para aplicar filtros...');
+    const applyButtonFound = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      const applyButton = buttons.find(button => {
+        const buttonText = button.textContent?.trim() || '';
+        // Busca "Mostrar X resultados"
+        return (
+          buttonText.startsWith('Mostrar') && buttonText.includes('resultado')
+        );
+      });
+
+      if (applyButton) {
+        (applyButton as HTMLElement).click();
+        return true;
+      }
+      return false;
+    });
+
+    if (applyButtonFound) {
+      console.log('✅ Botón para aplicar filtros accionado.');
+      await new Promise(res => setTimeout(res, 4000));
+    } else {
+      console.log(
+        '⚠️ No se encontró el botón para aplicar filtros, cerrando dropdown...',
+      );
+      // Cerrar el dropdown si no hay botón (click fuera)
+      await page.click(filterButtonSelector);
+    }
+  } catch (error) {
+    console.error('❌ Error al configurar el filtro de modalidad:', error);
   }
 }
