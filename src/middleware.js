@@ -1,22 +1,21 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
+import { jwtVerify } from "jose";
+import { NextResponse } from "next/server";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET as string);
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
-export async function middleware(req: NextRequest) {
-  const token = req.cookies.get('token')?.value;
+export async function middleware(req) {
+  const token = req.cookies.get("token")?.value;
   const { pathname } = req.nextUrl;
 
   // If the user is trying to access login, let them pass
-  if (pathname.startsWith('/login')) {
+  if (pathname.startsWith("/login")) {
     return NextResponse.next();
   }
 
   // If there's no token and the route is protected, redirect to login
   if (!token) {
     if (isProtectedRoute(pathname)) {
-      return NextResponse.redirect(new URL('/login', req.url));
+      return NextResponse.redirect(new URL("/login", req.url));
     }
     return NextResponse.next();
   }
@@ -32,42 +31,40 @@ export async function middleware(req: NextRequest) {
     const isRevoked = await isTokenRevoked(token, req);
     if (isRevoked) {
       // If token is revoked, treat as if there's no token
-      return NextResponse.redirect(new URL('/login', req.url));
+      return NextResponse.redirect(new URL("/login", req.url));
     }
 
     // Add user data to the request headers to be used in API routes/pages
     const requestHeaders = new Headers(req.headers);
-    requestHeaders.set('x-user-id', payload.userId as string);
-    requestHeaders.set('x-user-email', payload.email as string);
+    requestHeaders.set("x-user-id", payload.userId);
+    requestHeaders.set("x-user-email", payload.email);
 
     return NextResponse.next({
       request: {
         headers: requestHeaders,
       },
     });
-  } catch (err) {
+  } catch (error) {
+    console.error("Error in middleware:", error);
     // If token is invalid (e.g., expired), redirect to login
-    return NextResponse.redirect(new URL('/login', req.url));
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 }
 
-function isProtectedRoute(pathname: string): boolean {
-  const protectedRoutes = ['/', '/history', '/api/apply', '/api/history'];
-  return protectedRoutes.some(route => pathname.startsWith(route));
+function isProtectedRoute(pathname) {
+  const protectedRoutes = ["/", "/history", "/api/apply", "/api/history"];
+  return protectedRoutes.some((route) => pathname.startsWith(route));
 }
 
-async function isTokenRevoked(
-  token: string,
-  req: NextRequest,
-): Promise<boolean> {
+async function isTokenRevoked(token, req) {
   // This function would need to import prisma client, but we can't in middleware.
   // This is a known limitation.
   // The correct way is to call an internal API route to check the DB.
   // Let's create an API route for this check.
-  const checkUrl = new URL('/api/auth/check-token', req.url); // Base URL doesn't matter much here
+  const checkUrl = new URL("/api/auth/check-token", req.url); // Base URL doesn't matter much here
   const response = await fetch(checkUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
   });
   return response.status === 401;
@@ -83,6 +80,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - api/auth/login (the login API itself to avoid redirect loops)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api/auth/login).*)',
+    "/((?!_next/static|_next/image|favicon.ico|api/auth/login).*)",
   ],
 };
