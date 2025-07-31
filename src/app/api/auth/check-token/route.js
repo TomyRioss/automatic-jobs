@@ -13,8 +13,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Token not provided" }, { status: 400 });
     }
 
-    await jwtVerify(token, JWT_SECRET);
+    // Verificamos y decodificamos el token
+    const { payload } = await jwtVerify(token, JWT_SECRET);
 
+    // Comprobamos si el token ha sido revocado
     const isRevoked = await prisma.revokedToken.findUnique({
       where: { token },
     });
@@ -23,7 +25,8 @@ export async function POST(req) {
       return NextResponse.json({ error: "Token has been revoked" }, { status: 401 });
     }
 
-    return NextResponse.json({ valid: true, user: decodedToken });
+    // Todo OK
+    return NextResponse.json({ valid: true, user: payload });
   } catch (error) {
     return NextResponse.json({ valid: false, error: error.message }, { status: 401 });
   }
