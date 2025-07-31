@@ -1,6 +1,4 @@
 // src/app/api/apply/route.js
-import { createRequire } from "node:module";
-
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import vanillaPuppeteer from "puppeteer";
@@ -8,12 +6,6 @@ import vanillaPuppeteer from "puppeteer";
 import { handleBumeran } from "./bumeran";
 import { handleLinkedin } from "./linkedin";
 import { handleZonajobs } from "./zonajobs";
-
-const require = createRequire(import.meta.url);
-const puppeteer = require("puppeteer-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-
-puppeteer.use(StealthPlugin());
 
 const activeSessions = new Map();
 
@@ -36,13 +28,17 @@ export async function POST(req) {
   const stream = new ReadableStream({
     start(controller) {
       const log = (message) => {
-        controller.enqueue(`${message}\\n`);
+        controller.enqueue(`${message}\n`);
       };
 
       const runScraping = async () => {
         activeSessions.set(userId, { status: "running", platform });
         let browser;
         try {
+          const puppeteer = (await import("puppeteer-extra")).default;
+          const StealthPlugin = (await import("puppeteer-extra-plugin-stealth")).default;
+
+          puppeteer.use(StealthPlugin());
           log("Launching browser...");
           browser = await puppeteer.launch({
             headless: false,
