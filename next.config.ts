@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
       "puppeteer-extra",
       "puppeteer-extra-plugin-stealth",
       "puppeteer-extra-plugin-user-preferences", // 👈 nuevo
+      "puppeteer-extra-plugin-user-data-dir", // 👈 nuevo
     ],
   },
 
