@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
       "puppeteer",
       "puppeteer-extra",
       "puppeteer-extra-plugin-stealth",
+      "puppeteer-extra-plugin-user-preferences", // 👈 nuevo
     ],
   },
 
@@ -14,6 +15,7 @@ const nextConfig: NextConfig = {
       "./node_modules/puppeteer/**",
       "./node_modules/puppeteer-extra/**",
       "./node_modules/puppeteer-extra-plugin-stealth/**",
+      "./node_modules/puppeteer-extra-plugin-user-preferences/**", // 👈 nuevo
     ],
   },
 
@@ -24,6 +26,7 @@ const nextConfig: NextConfig = {
         "puppeteer",
         "puppeteer-extra",
         "puppeteer-extra-plugin-stealth",
+        "puppeteer-extra-plugin-user-preferences", // 👈 nuevo
       ];
     }
     return config;
