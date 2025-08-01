@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
       "puppeteer-extra-plugin-user-preferences",
       "puppeteer-extra-plugin-user-data-dir",
       "fs-extra",
+      "universalify",
     ],
   },
 
@@ -20,6 +21,7 @@ const nextConfig: NextConfig = {
       "./node_modules/puppeteer-extra-plugin-user-preferences/**",
       "./node_modules/puppeteer-extra-plugin-user-data-dir/**",
       "./node_modules/fs-extra/**",
+      "./node_modules/universalify/**",
     ],
   },
 
@@ -33,6 +35,7 @@ const nextConfig: NextConfig = {
         "puppeteer-extra-plugin-user-preferences",
         "puppeteer-extra-plugin-user-data-dir",
         "fs-extra",
+        "universalify",
       ];
     }
     return config;
