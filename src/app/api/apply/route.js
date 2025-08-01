@@ -1,7 +1,6 @@
 // src/app/api/apply/route.js
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import vanillaPuppeteer from "puppeteer";
 
 import { handleBumeran } from "./bumeran";
 import { handleLinkedin } from "./linkedin";
@@ -40,13 +39,46 @@ export async function POST(req) {
 
           puppeteer.use(StealthPlugin());
           log("Launching browser...");
+
+          // Configuración optimizada para Vercel
+          const isProduction = process.env.NODE_ENV === "production";
+
           browser = await puppeteer.launch({
-            headless: false,
-            args: ["--no-sandbox", "--disable-setuid-sandbox"],
-            executablePath: vanillaPuppeteer.executablePath(),
+            headless: "new",
+            args: [
+              "--no-sandbox",
+              "--disable-setuid-sandbox",
+              "--disable-dev-shm-usage",
+              "--disable-accelerated-2d-canvas",
+              "--no-first-run",
+              "--no-zygote",
+              "--disable-gpu",
+              "--disable-background-timer-throttling",
+              "--disable-backgrounding-occluded-windows",
+              "--disable-renderer-backgrounding",
+              "--disable-features=TranslateUI",
+              "--disable-ipc-flooding-protection",
+              "--single-process",
+              "--disable-extensions",
+              "--disable-plugins",
+              "--disable-images",
+              "--disable-javascript",
+              "--disable-web-security",
+              "--disable-features=VizDisplayCompositor",
+            ],
+            // Usar el Chrome incluido con Puppeteer
+            ignoreDefaultArgs: ["--disable-extensions"],
           });
+
           const page = await browser.newPage();
+
+          // Configurar el viewport
           await page.setViewport({ width: 1280, height: 800 });
+
+          // Configurar user agent
+          await page.setUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          );
 
           log(`Starting scraping for ${platform}...`);
 
