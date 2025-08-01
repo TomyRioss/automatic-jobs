@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
       "puppeteer-extra-plugin-user-data-dir",
       "fs-extra",
       "universalify",
+      "graceful-fs",
     ],
   },
 
@@ -22,6 +23,7 @@ const nextConfig: NextConfig = {
       "./node_modules/puppeteer-extra-plugin-user-data-dir/**",
       "./node_modules/fs-extra/**",
       "./node_modules/universalify/**",
+      "./node_modules/graceful-fs/**",
     ],
   },
 
@@ -36,6 +38,7 @@ const nextConfig: NextConfig = {
         "puppeteer-extra-plugin-user-data-dir",
         "fs-extra",
         "universalify",
+        "graceful-fs",
       ];
     }
     return config;
