@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
       "puppeteer-extra-plugin-stealth",
       "puppeteer-extra-plugin-user-preferences",
       "puppeteer-extra-plugin-user-data-dir",
+      "fs-extra",
     ],
   },
 
@@ -18,6 +19,7 @@ const nextConfig: NextConfig = {
       "./node_modules/puppeteer-extra-plugin-stealth/**",
       "./node_modules/puppeteer-extra-plugin-user-preferences/**",
       "./node_modules/puppeteer-extra-plugin-user-data-dir/**",
+      "./node_modules/fs-extra/**",
     ],
   },
 
@@ -30,6 +32,7 @@ const nextConfig: NextConfig = {
         "puppeteer-extra-plugin-stealth",
         "puppeteer-extra-plugin-user-preferences",
         "puppeteer-extra-plugin-user-data-dir",
+        "fs-extra",
       ];
     }
     return config;
