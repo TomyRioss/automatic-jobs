@@ -6,8 +6,8 @@ const nextConfig: NextConfig = {
       "puppeteer",
       "puppeteer-extra",
       "puppeteer-extra-plugin-stealth",
-      "puppeteer-extra-plugin-user-preferences", // 👈 nuevo
-      "puppeteer-extra-plugin-user-data-dir", // 👈 nuevo
+      "puppeteer-extra-plugin-user-preferences",
+      "puppeteer-extra-plugin-user-data-dir",
     ],
   },
 
@@ -16,7 +16,8 @@ const nextConfig: NextConfig = {
       "./node_modules/puppeteer/**",
       "./node_modules/puppeteer-extra/**",
       "./node_modules/puppeteer-extra-plugin-stealth/**",
-      "./node_modules/puppeteer-extra-plugin-user-preferences/**", // 👈 nuevo
+      "./node_modules/puppeteer-extra-plugin-user-preferences/**",
+      "./node_modules/puppeteer-extra-plugin-user-data-dir/**",
     ],
   },
 
@@ -27,7 +28,8 @@ const nextConfig: NextConfig = {
         "puppeteer",
         "puppeteer-extra",
         "puppeteer-extra-plugin-stealth",
-        "puppeteer-extra-plugin-user-preferences", // 👈 nuevo
+        "puppeteer-extra-plugin-user-preferences",
+        "puppeteer-extra-plugin-user-data-dir",
       ];
     }
     return config;
