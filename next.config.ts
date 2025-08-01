@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
     "universalify",
     "graceful-fs",
     "jsonfile",
+    "@tailwindcss/node",
+    "@tailwindcss/postcss",
+    "enhanced-resolve",
   ],
 
   outputFileTracingIncludes: {
@@ -26,6 +29,9 @@ const nextConfig: NextConfig = {
       "./node_modules/universalify/**",
       "./node_modules/graceful-fs/**",
       "./node_modules/jsonfile/**",
+      "./node_modules/@tailwindcss/node/**",
+      "./node_modules/@tailwindcss/postcss/**",
+      "./node_modules/enhanced-resolve/**",
     ],
   },
 
@@ -43,6 +49,9 @@ const nextConfig: NextConfig = {
         "universalify",
         "graceful-fs",
         "jsonfile",
+        "@tailwindcss/node",
+        "@tailwindcss/postcss",
+        "enhanced-resolve",
       ];
     }
     return config;
